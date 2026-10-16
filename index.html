@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>爭上游</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;800&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+  /* Layout: one centered column. Create / join buttons on top, then the player's hand as a grid of tappable cards. */
+  :root {
+    color-scheme: light;
+    --bg: #e9eeea;
+    --surface: #f7f9f6;
+    --fg: #16241f;
+    --muted: #5b6b64;
+    --line: #c9d3cd;
+    --accent: #1f6b57;
+    --accent-fg: #f4faf7;
+    --card: #fffdf8;
+    --card-edge: #cfc8b8;
+    --card-used: #bfc4c0;
+    --card-used-fg: #7d8581;
+    --suit-red: #c0332b;
+    --suit-black: #1c2421;
+    --font-display: "Noto Serif TC", "Songti TC", "PMingLiU", serif;
+    --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #0f1a17;
+      --surface: #16251f;
+      --fg: #e6efe9;
+      --muted: #93a79d;
+      --line: #284038;
+      --accent: #5fc4a3;
+      --accent-fg: #0b1713;
+      --card: #f3efe4;
+      --card-edge: #0b1210;
+      --card-used: #3a4742;
+      --card-used-fg: #6c7a74;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    padding-inline: max(16px, env(safe-area-inset-left), env(safe-area-inset-right));
+    padding-block: max(24px, env(safe-area-inset-top)) max(40px, env(safe-area-inset-bottom));
+  }
+  main { max-width: 760px; margin-inline: auto; display: flex; flex-direction: column; gap: 20px; }
+  h2 { font-family: var(--font-display); font-size: 1.15rem; margin: 0; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button, input { font: inherit; }
+  button.act {
+    min-height: 48px;
+    padding-inline: 26px;
+    border-radius: 4px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-weight: 700;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  button.act.ghost { background: transparent; color: var(--accent); }
+  button.act:hover { filter: brightness(1.08); }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  label { display: block; margin-bottom: 6px; }
+  input {
+    flex: 1 1 140px;
+    max-width: 220px;
+    min-width: 0;
+    min-height: 48px;
+    padding-inline: 12px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--fg);
+    font-family: var(--font-mono);
+    font-size: 18px; /* 16px or larger stops iPhones from zooming in when the field is focused */
+    letter-spacing: 0.08em;
+  }
+  .seed {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 1.5rem;
+    letter-spacing: 0.12em;
+    font-variant-numeric: tabular-nums;
+    user-select: all;
+  }
+  .msg { margin: 0; overflow-wrap: anywhere; }
+  .msg.err { color: var(--suit-red); }
+
+  .table {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
+  .hand {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+    gap: 8px;
+  }
+  .card {
+    width: 100%;
+    max-width: 84px;
+    aspect-ratio: 5 / 7;
+    padding: 4px 3px;
+    background: var(--card);
+    border: 1px solid var(--card-edge);
+    border-radius: 6px;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    justify-items: center;
+    font-family: var(--font-display);
+    font-weight: 800;
+    line-height: 1;
+    color: var(--suit-black);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+    transition: background-color 0.12s, color 0.12s, opacity 0.12s;
+  }
+  .card.red { color: var(--suit-red); }
+  .card .rank { font-size: 1.1rem; align-self: start; }
+  .card .suit { font-size: 1.8rem; align-self: center; }
+  .card.joker { padding-top: 6px; }
+  .card.joker .rank { writing-mode: vertical-rl; font-size: 1.05rem; letter-spacing: 0.1em; align-self: center; grid-row: 1 / span 2; }
+  .card.used {
+    background: var(--card-used);
+    color: var(--card-used-fg);
+    opacity: 0.6;
+    box-shadow: none;
+  }
+  @media (max-width: 480px) {
+    .table { padding: 12px; gap: 12px; }
+    .hand { gap: 6px; }
+    button.act { flex: 1 1 0; }
+    #choose button.act { flex: 1 1 120px; padding-inline: 14px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .card { transition: none; } }
+  [hidden] { display: none !important; }
+
+  .topbar { display: flex; justify-content: flex-end; }
+  button.lang {
+    min-height: 40px;
+    min-width: 64px;
+    padding-inline: 14px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--fg);
+    font-weight: 500;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  button.lang:hover { border-color: var(--accent); }
+  html[lang="en"] .card.joker .rank { font-size: 0.85rem; letter-spacing: 0.05em; }
+
+  /* Player B / C picker, shown only when a 3-player seed is typed */
+  fieldset.roles { border: 0; padding: 0; margin: 12px 0 0; min-width: 0; }
+  fieldset.roles legend { padding: 0; margin-bottom: 4px; }
+  label.opt { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin: 0 20px 0 0; cursor: pointer; }
+  input[type="radio"] {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    min-height: 0;
+    max-width: none;
+    padding: 0;
+    accent-color: var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<main>
+  <div class="topbar">
+    <button class="lang" id="langBtn" type="button">EN</button>
+  </div>
+
+  <div class="row" id="choose">
+    <button class="act" id="create2" type="button" data-i18n="create2">創建 (2人)</button>
+    <button class="act" id="create3" type="button" data-i18n="create3">創建 (3人)</button>
+    <button class="act ghost" id="join" type="button" data-i18n="join">加入</button>
+  </div>
+
+  <form id="joinForm" hidden>
+    <label for="seedIn" data-i18n="enterSeed">輸入你的種子:</label>
+    <div class="row">
+      <input id="seedIn" inputmode="numeric" maxlength="5" autocomplete="off">
+      <button class="act" type="submit" data-i18n="join">加入</button>
+    </div>
+    <fieldset class="roles" id="roles" hidden>
+      <legend data-i18n="pickRole">你是哪位玩家?</legend>
+      <label class="opt"><input type="radio" name="role" value="B" checked><span data-i18n="playerB">玩家B</span></label>
+      <label class="opt"><input type="radio" name="role" value="C"><span data-i18n="playerC">玩家C</span></label>
+    </fieldset>
+  </form>
+
+  <p class="msg" id="seedMsg" hidden><span id="shareText" data-i18n="shareSeed">請給你的朋友分享這個種子:</span> <span class="seed" id="seedOut"></span></p>
+  <p class="msg err" id="err" role="alert" hidden data-i18n="invalid">無效輸入，請你重新開始!</p>
+
+  <form id="codeForm" hidden>
+    <label for="codeIn" data-i18n="codeLabel">輸入玩家B給你的代碼:</label>
+    <div class="row">
+      <input id="codeIn" inputmode="numeric" maxlength="5" autocomplete="off">
+      <button class="act" type="submit" data-i18n="confirm">確認</button>
+    </div>
+  </form>
+  <p class="msg err" id="codeErr" role="alert" hidden data-i18n="invalidCode">代碼無效，請再檢查一次。</p>
+
+  <p class="msg" id="giveMsg" hidden><span id="giveText" data-i18n="giveCode2">請把這個代碼給玩家A:</span> <span class="seed" id="codeOut"></span></p>
+
+  <section class="table" id="table" hidden>
+    <h2 id="who"></h2>
+    <div class="hand" id="hand"></div>
+  </section>
+</main>
+
+<script>
+  // Seeded PRNG (mulberry32) and Fisher-Yates shuffle
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  var SUITS = ['♠', '♥', '♦', '♣'];
+  var RANKS = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
+  var RANK_ORDER = { '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14, '2': 15, 'BJ': 16, 'RJ': 17 };
+
+  function shuffle(seed) {
+    var rand = mulberry32(seed);
+    var deck = [];
+    RANKS.forEach(function (r) { SUITS.forEach(function (s) { deck.push({ rank: r, suit: s }); }); });
+    deck.push({ rank: 'RJ', suit: '' });
+    deck.push({ rank: 'BJ', suit: '' });
+    for (var i = deck.length - 1; i > 0; i--) {
+      var j = Math.floor(rand() * (i + 1));
+      var tmp = deck[i]; deck[i] = deck[j]; deck[j] = tmp;
+    }
+    return deck;
+  }
+
+  function autosort(hand) {
+    return hand.slice().sort(function (a, b) {
+      return RANK_ORDER[a.rank] - RANK_ORDER[b.rank] || SUITS.indexOf(a.suit) - SUITS.indexOf(b.suit);
+    });
+  }
+
+  // The seed itself says how many players: 10000-49999 is a 2-player game, 50000-99999 is a 3-player game.
+  function modeOf(seed) { return seed >= 50000 ? 3 : 2; }
+
+  // Player B's code is mixed into the shuffle, so Player A cannot pick a seed that gives A a good hand:
+  // the hands do not exist until B's code does.
+  function mix(seed, code) {
+    var h = (seed * 10000 + code) | 0;
+    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+    return (h ^ (h >>> 16)) >>> 0;
+  }
+
+  // A code is 4 random digits plus 1 check digit, so a mistyped code is rejected instead of dealing a wrong hand.
+  function checkDigit(n4) {
+    var d = String(n4), w = [1, 3, 7, 9], s = 0;
+    for (var i = 0; i < 4; i++) s += parseInt(d.charAt(i), 10) * w[i];
+    return s % 10;
+  }
+  function encodeCode(n4) { return n4 * 10 + checkDigit(n4); }
+  function decodeCode(str) {
+    if (!/^\d{5}$/.test(str)) return null;
+    var n = parseInt(str, 10), n4 = Math.floor(n / 10);
+    return (n4 >= 1000 && n % 10 === checkDigit(n4)) ? n4 : null;
+  }
+
+  function deal(seed, code) {
+    var deck = shuffle(mix(seed, code));
+    if (modeOf(seed) === 3) {
+      // 3 players: all 54 cards are dealt, 18 each, nothing set aside
+      return {
+        A: autosort(deck.slice(0, 18)),
+        B: autosort(deck.slice(18, 36)),
+        C: autosort(deck.slice(36))
+      };
+    }
+    var rest = deck.slice(20); // 2 players: 20 cards set aside
+    var half = rest.length / 2;
+    return { A: autosort(rest.slice(0, half)), B: autosort(rest.slice(half)) };
+  }
+
+  function getSeed(players) {
+    return players === 3
+      ? 50000 + Math.floor(Math.random() * 50000)
+      : 10000 + Math.floor(Math.random() * 40000);
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---- Language (Traditional Chinese / English) ----
+  var I18N = {
+    zh: {
+      title: '爭上游test',
+      create2: '創建 (2人)',
+      create3: '創建 (3人)',
+      join: '加入',
+      enterSeed: '輸入你的種子:',
+      pickRole: '你是哪位玩家?',
+      playerB: '玩家B',
+      playerC: '玩家C',
+      shareSeed: '請給你的朋友分享這個種子:',
+      shareSeed3: '請給你的朋友們分享這個種子:',
+      codeLabel: '輸入玩家B給你的代碼:',
+      confirm: '確認',
+      giveCode2: '請把這個代碼給玩家A:',
+      giveCode3: '請把這個代碼給玩家A和玩家C:',
+      invalidCode: '代碼無效，請再檢查一次。',
+      invalid: '無效輸入，請你重新開始!',
+      hand: function (role) { return '你的底牌 (玩家' + role + ')'; },
+      bigJoker: '大鬼', smallJoker: '小鬼',
+      bigJokerLabel: '大鬼', smallJokerLabel: '小鬼',
+      switchTo: 'EN', switchLabel: 'Switch to English'
+    },
+    en: {
+      title: 'Zheng Shang You',
+      create2: 'Create (2 players)',
+      create3: 'Create (3 players)',
+      join: 'Join',
+      enterSeed: 'Enter your seed:',
+      pickRole: 'Which player are you?',
+      playerB: 'Player B',
+      playerC: 'Player C',
+      shareSeed: 'Share this seed with your friend:',
+      shareSeed3: 'Share this seed with your friends:',
+      codeLabel: 'Enter the code Player B gave you:',
+      confirm: 'Confirm',
+      giveCode2: 'Give this code to Player A:',
+      giveCode3: 'Give this code to Players A and C:',
+      invalidCode: 'Invalid code, please check it and try again.',
+      invalid: 'Invalid input, please start over!',
+      hand: function (role) { return 'Your hand (Player ' + role + ')'; },
+      bigJoker: 'JOKER', smallJoker: 'JOKER',
+      bigJokerLabel: 'Big Joker', smallJokerLabel: 'Small Joker',
+      switchTo: '中文', switchLabel: '切換到中文'
+    }
+  };
+
+  function initialLang() {
+    try {
+      var saved = localStorage.getItem('zsy-lang');
+      if (saved === 'zh' || saved === 'en') return saved;
+    } catch (e) {}
+    return /^zh/i.test(navigator.language || '') ? 'zh' : 'en';
+  }
+
+  var lang = initialLang();
+  var current = null; // { seed, role } of the hand on screen, so it can be redrawn in the new language
+  function t(key) { return I18N[lang][key]; }
+
+  function applyLang() {
+    document.documentElement.lang = lang === 'zh' ? 'zh-Hant' : 'en';
+    document.title = t('title');
+    var nodes = document.querySelectorAll('[data-i18n]');
+    for (var i = 0; i < nodes.length; i++) nodes[i].textContent = t(nodes[i].getAttribute('data-i18n'));
+    $('langBtn').textContent = t('switchTo');
+    $('langBtn').setAttribute('aria-label', t('switchLabel'));
+    if (current) show(current.seed, current.role, current.code);
+  }
+
+  $('langBtn').addEventListener('click', function () {
+    lang = lang === 'zh' ? 'en' : 'zh';
+    try { localStorage.setItem('zsy-lang', lang); } catch (e) {}
+    applyLang();
+  });
+
+  // Remember which cards are greyed out, per seed and role, if storage is available
+  function loadUsed(key) {
+    try { return JSON.parse(localStorage.getItem(key)) || {}; } catch (e) { return {}; }
+  }
+  function saveUsed(key, used) {
+    try { localStorage.setItem(key, JSON.stringify(used)); } catch (e) {}
+  }
+
+  function cardEl(c, used, onToggle) {
+    var el = document.createElement('button');
+    el.type = 'button';
+    var joker = c.rank === 'RJ' || c.rank === 'BJ';
+    var name = c.rank === 'RJ' ? t('bigJoker') : c.rank === 'BJ' ? t('smallJoker') : c.rank;
+    var label = c.rank === 'RJ' ? t('bigJokerLabel') : c.rank === 'BJ' ? t('smallJokerLabel') : c.rank + c.suit;
+    el.className = 'card' + (joker ? ' joker' : '') +
+      ((c.suit === '♥' || c.suit === '♦' || c.rank === 'RJ') ? ' red' : '') +
+      (used ? ' used' : '');
+    el.setAttribute('aria-pressed', used ? 'true' : 'false');
+    el.setAttribute('aria-label', label);
+    var r = document.createElement('span');
+    r.className = 'rank';
+    r.textContent = name;
+    el.appendChild(r);
+    if (!joker) {
+      var s = document.createElement('span');
+      s.className = 'suit';
+      s.textContent = c.suit;
+      el.appendChild(s);
+    }
+    el.addEventListener('click', function () {
+      var now = el.classList.toggle('used');
+      el.setAttribute('aria-pressed', now ? 'true' : 'false');
+      onToggle(now);
+    });
+    return el;
+  }
+
+  function show(seed, role, code) {
+    var hand = deal(seed, code)[role];
+    var key = 'zsy-used-' + seed + '-' + code + '-' + role;
+    var used = loadUsed(key);
+    var box = $('hand');
+    box.textContent = '';
+    hand.forEach(function (c, i) {
+      box.appendChild(cardEl(c, !!used[i], function (now) {
+        if (now) used[i] = 1; else delete used[i];
+        saveUsed(key, used);
+      }));
+    });
+    $('who').textContent = t('hand')(role);
+    current = { seed: seed, role: role, code: code };
+    $('table').hidden = false;
+  }
+
+  var pending = null; // { seed, role } waiting for Player B's code
+
+  function reset() {
+    $('err').hidden = true;
+    $('codeErr').hidden = true;
+    $('seedMsg').hidden = true;
+    $('giveMsg').hidden = true;
+    $('codeForm').hidden = true;
+    $('table').hidden = true;
+    current = null;
+    pending = null;
+  }
+
+  // Player B's code is made once per seed and kept, so reloading the page gives the same code and the same hand
+  function getOwnCode(seed) {
+    var key = 'zsy-code-' + seed;
+    try {
+      var saved = parseInt(localStorage.getItem(key), 10);
+      if (saved >= 1000 && saved <= 9999) return saved;
+    } catch (e) {}
+    var code = 1000 + Math.floor(Math.random() * 9000);
+    try { localStorage.setItem(key, String(code)); } catch (e) {}
+    return code;
+  }
+
+  // Player B sees the cards right away, along with the code to hand to the others
+  function showOwn(seed) {
+    var code = getOwnCode(seed);
+    var key = modeOf(seed) === 3 ? 'giveCode3' : 'giveCode2';
+    $('giveText').setAttribute('data-i18n', key);
+    $('giveText').textContent = t(key);
+    $('codeOut').textContent = encodeCode(code);
+    $('giveMsg').hidden = false;
+    show(seed, 'B', code);
+  }
+
+  // Player A (and Player C in a 3-player game) cannot see any cards until Player B's code is entered
+  function askCode(seed, role) {
+    pending = { seed: seed, role: role };
+    $('codeIn').value = '';
+    $('codeForm').hidden = false;
+  }
+
+  $('codeForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!pending) return;
+    var code = decodeCode($('codeIn').value.trim());
+    if (code === null) {
+      $('codeErr').hidden = false;
+      return;
+    }
+    $('codeErr').hidden = true;
+    $('codeForm').hidden = true;
+    var p = pending;
+    pending = null;
+    show(p.seed, p.role, code);
+  });
+
+  function create(players) {
+    reset();
+    $('joinForm').hidden = true;
+    var seed = getSeed(players);
+    $('seedOut').textContent = seed;
+    var key = players === 3 ? 'shareSeed3' : 'shareSeed';
+    $('shareText').setAttribute('data-i18n', key);
+    $('shareText').textContent = t(key);
+    $('seedMsg').hidden = false;
+    askCode(seed, 'A');
+  }
+
+  $('create2').addEventListener('click', function () { create(2); });
+  $('create3').addEventListener('click', function () { create(3); });
+
+  // Player B / C choice only appears once a complete 3-player seed has been typed
+  function updateRoles() {
+    var v = $('seedIn').value.trim();
+    $('roles').hidden = !(/^\d{5}$/.test(v) && modeOf(parseInt(v, 10)) === 3);
+  }
+  $('seedIn').addEventListener('input', updateRoles);
+
+  $('join').addEventListener('click', function () {
+    reset();
+    $('joinForm').hidden = false;
+    updateRoles();
+    $('seedIn').focus();
+  });
+
+  $('joinForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    reset();
+    var v = $('seedIn').value.trim();
+    if (!/^\d{5}$/.test(v) || parseInt(v, 10) < 10000) {
+      $('err').hidden = false;
+      return;
+    }
+    var seed = parseInt(v, 10);
+    var role = 'B';
+    if (modeOf(seed) === 3) {
+      role = document.querySelector('input[name="role"]:checked').value;
+    }
+    if (role === 'B') showOwn(seed); else askCode(seed, role);
+  });
+
+  applyLang();
+</script>
+</body>
+</html>
